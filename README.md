@@ -34,3 +34,8 @@ The train function is the core part of the Python code implementation, which acc
 We incorporated an early termination condition based on the average cumulative reward to prevent overfitting. We used the early stopping condition 30 consecutive average cumulative rewards of greater than 5 instead of 30 consecutive average cumulative rewards of greater than 10.  The cum_itr_list 30 most recent values in a series are all bigger than 5 the code will change the value of cum_itr to True, break the while loop, and end the episodes. The learning performance graph was created using the library matplotlib by plotting a graph between the episode and cumulative average reward. A q-table with four actions south, north, west, east, and agent travelled states was created using the gen_qtable function. Q-values were loaded into a data frame in pandas, translated to a table format using pandas’ operations, and then saved as an excel sheet using the openpyxl module. The board layout and state data for each grid cell are displayed using the function showGridboard. The agent's travel path or converging direction to the end state is assumed to be represented by the maximum q-value of a given state.
 
 ![The grid world converging path visualization](images/grid_output.png)
+
+This work is based on the paper presented in the SGAI conference 2024 at Cambridge University and published in the book Artificial Intelligence XL by Springer. 
+https://link.springer.com/chapter/10.1007/978-3-031-47994-6_26
+
+https://www.researchgate.net/publication/375477228_Q-Learning_Solutions_for_Grid_World_Problem_with_Forward_and_Backward_Reward_Propagations#:~:text=This%20paper%20presents%20solutions%20to,for%20the%20grid%20world%20problem.
