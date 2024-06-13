@@ -1,11 +1,3 @@
-"""
-author : Snobin Antony
-reference: https://towardsdatascience.com/reinforcement-learning-implement-grid-world-from-scratch-c5963765ebff
-created on: 09/03/2023
-To run the code install the packages by, pip install numpy, pip install pandas, pip install matplotlib, pip install openpyxl
-and run, python antony-s1.py 
-"""
-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -13,34 +5,36 @@ import matplotlib.pyplot as plt
 BOARD_ROWS = 5
 BOARD_COLS = 5
 WIN_STATE = (4, 4)
-JUMP_STATE = (3, 3)
-START_STATE = (1, 0)
-BLACK_GRID = [(3,2),(2,2),(2,3),(2,4)]
+START = (1, 0)
 DETERMINISTIC = False
+JUMP_STATE = (3, 3)
+JUMP_START_STATE = (1, 3)
+
+BLACK_GRID = [(3,2),(2,2),(2,3),(2,4)]
 
 
-class Grid_State:
-    # initialize variiables and the grid board
-    def __init__(self, state=START_STATE):
+class State:
+    def __init__(self, state=START):
         self.board = np.zeros([BOARD_ROWS, BOARD_COLS])
+        self.board[1, 1] = -1
         self.state = state
         self.isEnd = False
         self.determine = DETERMINISTIC
 
-    # reward function for win state, jump state and all other states 
-    def getReward(self,special_flag):
-        if self.state == WIN_STATE and special_flag =="nojump":
+    def giveReward(self, prevstate):
+        if self.state == WIN_STATE:
             return 10
-        elif self.state == WIN_STATE and special_flag =="jump":
-            return 15
+        elif self.state == JUMP_STATE and prevstate == JUMP_START_STATE:
+            return 5
         else:
             return -1
 
-    def isEndFunc(self):
-        if (self.state == WIN_STATE):
+    def isEndFunc(self,prevstate):
+        if (self.state == WIN_STATE) :
+        # if (prevstate == WIN_STATE) :
             self.isEnd = True
 
-    def epsilon_greedy_prob(self, action):
+    def _chooseActionProb(self, action):
         if action == "north":
             return np.random.choice(["north", "west", "east"], p=[0.8, 0.1, 0.1])
         if action == "south":
@@ -50,12 +44,11 @@ class Grid_State:
         if action == "east":
             return np.random.choice(["east", "north", "south"], p=[0.8, 0.1, 0.1])
 
-    def next_cell_pos(self, action):
+    def nxtPosition(self, action):
         """
         action: north, south, west, east
-        --------------------------------
-          | 0 | 1| 2| 3| 4|
-        0 |
+        -------------
+        0 | 1 | 2| 3|4
         1 |
         2 |
         3 |
@@ -74,9 +67,9 @@ class Grid_State:
             self.determine = False
         else:
             # non-deterministic
-            action = self.epsilon_greedy_prob(action)
+            action = self._chooseActionProb(action)
             self.determine = True
-            nxtState = self.next_cell_pos(action)
+            nxtState = self.nxtPosition(action)
 
         # if next state is legal
         if (nxtState[0] >= 0) and (nxtState[0] <= 4):
@@ -88,12 +81,13 @@ class Grid_State:
                     self.state = JUMP_STATE
         return self.state
 
-class Grid_Agent:
-    # initialise the actions, states, Q-values and optimization paramteres 
+
+class Agent:
+
     def __init__(self):
         self.states = []  # record position and action taken at the position
         self.actions = ["north", "south", "west", "east"]
-        self.State = Grid_State()
+        self.State = State()
         self.isEnd = self.State.isEnd
         self.lr = 0.2 # 1 # 0.9 # 0
         self.exp_rate = 0.3
@@ -105,94 +99,91 @@ class Grid_Agent:
             for j in range(BOARD_COLS):
                 self.Q_values[(i, j)] = {}
                 for a in self.actions:
-                    self.Q_values[(i, j)][a] = -1  # Q value is a dict of dict and it initialised with -1 so all actions will get -1 reward
+                    self.Q_values[(i, j)][a] = -1  # Q value is a dict of dict
 
     def chooseAction(self):
         # choose action with most expected value
-        mx_nxt_reward = -1
-        action = ''
-
+        # exploration
         if np.random.uniform(0, 1) <= self.exp_rate:
             action = np.random.choice(self.actions)
         else:
             # greedy action
-            for a in self.actions:
-                current_position = self.State.state
-                nxt_reward = self.Q_values[current_position][a]
-                if nxt_reward >= mx_nxt_reward:
-                    action = a
-                    mx_nxt_reward = nxt_reward
-            # print("current pos: {}, greedy action: {}".format(self.State.state, action))
+            current_position = self.State.state
+            action_dict = self.Q_values[current_position]
+            action = max(action_dict, key=action_dict.get)
         return action
 
     def takeAction(self, action):
-        position = self.State.next_cell_pos(action)
+        position = self.State.nxtPosition(action)
         # update State
-        return Grid_State(state=position)
+        return State(state=position)
 
     def reset(self):
         self.states = []
-        self.State = Grid_State()
+        self.State = State()
         self.isEnd = self.State.isEnd
+    def updateQvalue(self, cur_state, action, next_state, reward):
+        current_q_value = self.Q_values[cur_state][action]
+        q_val_array = self.Q_values[next_state]
+        # max_q_value = max(q_val_array.values())
+        target_q_value = self.Q_values[next_state][action]
+        # current_q_value = current_q_value + self.lr*(reward + self.decay_gamma * max_q_value - current_q_value)
+        ## SARSA
+        current_q_value = current_q_value + self.lr*(reward + self.decay_gamma * target_q_value - current_q_value)
+        self.Q_values[cur_state][action] = round(current_q_value,3)
 
-    def train(self, rounds=100):
+
+    def play(self, rounds=10):
         i = 0
+        cum_reward = 0
         self.cum_itr_list = [1]
         cum_itr = False
         while (i < rounds and cum_itr == False):
             print("-----------------------------------------------> episode ",i)
-            # to the end of game back propagate reward
-            print(self.Q_values[self.State.state])
+            # checking if end state is reached or one episode is completed
             if self.State.isEnd:
-                # back propagate
-                if [(1, 3), "south"] in (self.states):
-                    #print(self.states)
-                    reward = self.State.getReward("jump")
-                    flag_reward = reward
-                else:
-                    reward = self.State.getReward("nojump")
-                    flag_reward = reward
+                reward = self.State.giveReward(prevstate)
+                cum_reward += reward
+                # updating the the Q value for the current state and action
                 for a in self.actions:
-                    self.Q_values[self.State.state][a] = reward
-                print("Game End Reward", reward)
-                cum_reward = reward
-                for s in reversed(self.states):
-                    current_q_value = self.Q_values[s[0]][s[1]]
-                    ## (reward + (self.decay_gamma * max_qvalue) = self.decay_gamma * reward
-                    # updating reward 5 in the back propagation, which gained the agent when it jumped 
-                    if s[0] == (1,3) and s[1] == "south":
-                        reward = 5
-                        reward = current_q_value + self.lr * (self.decay_gamma * reward - current_q_value)
-                    else:
-                        reward = current_q_value + self.lr * (self.decay_gamma * reward - current_q_value)
-                    self.Q_values[s[0]][s[1]] = round(reward, 3)
-                    # Calculating cumulative reward
-                    cum_reward += reward
+                    self.updateQvalue(self.State.state, a, self.State.state, reward)
+                # self.updateQvalue(prevstate, action, self.State.state, reward)
                 # Calculating average cumulative reward
                 avg_reward = cum_reward/(len(self.states))
                 self.cum_itr_list.append(avg_reward)
+                print(f'average reward {avg_reward}')
                 cum_reward = 0
                 
                 # to stop the episode if avg cumulative reward greater than 10 in 30 consecutive episode. tried 5 instead 10
-                if all(i >= 5 for i in self.cum_itr_list[-30:]) is True:
-                    if flag_reward == 15:
+                if all(i >= 1 for i in self.cum_itr_list[-30:]) is True:
+                    # if flag_reward == 15:
                     # if cum_itr_list[-30:].count(15) == 30:
-                        print(self.cum_itr_list[-30:])
-                        cum_itr = True
-                        break
-
+                    print(self.cum_itr_list[-30:])
+                    cum_itr = True
+                    break
+                
                 self.reset()
                 i += 1
-
             else:
+                # the present state of the environment
+                prevstate = self.State.state
+                # choosing the action randomly or using greedy policy
                 action = self.chooseAction()
-                # append trace
-                self.states.append([(self.State.state), action])
-                print("current position {} action {}".format(self.State.state, action))
-                # by taking the action, it reaches the next state
+
+                print("current position {} action {}".format(prevstate, action))
+                # as a result of action the enviroment is changed to next state
                 self.State = self.takeAction(action)
+                # the reward is given by the enviroment
+                reward = self.State.giveReward(prevstate)
+                cum_reward += reward
+                # print(f'the reward {reward}')
+                # the current state and reward are appended to the list of states in the episode
+                self.states.append([(prevstate), reward])
+                # updating the the Q value for the current state and action
+                self.updateQvalue(prevstate, action, self.State.state, reward)
+
                 # mark is end
-                self.State.isEndFunc()
+                self.State.isEndFunc(prevstate)
                 print("nxt state", self.State.state)
                 self.isEnd = self.State.isEnd
 
@@ -231,17 +222,37 @@ class Grid_Agent:
         print(df)
         # Write DataFrame to Excel file
         # pip install openpyxl
-        df.to_excel('Q_table.xlsx')
-        print("q table created as xlsx file")
+        # df.to_excel('Q_table.xlsx')
+        # print("q table created as xlsx file")
 
 if __name__ == "__main__":
-    ag = Grid_Agent()
+    ag = Agent()
     print("initial Q-values ... \n")
     print(ag.Q_values)
+    ag.showGridboard()
 
-    ag.train(100)
+    ag.play(1000)
     print("latest Q-values ... \n")
     print(ag.Q_values)
     ag.gen_qtable()
     ag.showGridboard()
     ag.plot_graph()
+
+    # new_arr_reward = []
+    # new_arr_episode = ag.episode_array[np.where(ag.episode_array != 0)]
+    # i = 0
+
+    # while i < len(new_arr_episode):
+    #     new_arr_reward.append(ag.cum_reward_list[i])
+    #     i += 1
+
+    # #print(len(new_arr_reward))
+    # #print(len(new_arr_episode))
+    # if len(new_arr_episode) == len(new_arr_reward):
+    #     plt.plot(new_arr_episode, new_arr_reward)
+    #     plt.xlabel('Episode')
+    #     plt.ylabel('Cumulative Reward')
+    #     plt.title('Cumulative Reward Accross Episodes')
+    #     plt.show()
+    # else:
+    #     pass
